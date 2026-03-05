@@ -10,6 +10,7 @@ export const handler = async (event) => {
     }
 
     const messageId = record.Sns.MessageId;
+    console.log("Processing messageId:", messageId);
 
     // check DB
     // const alreadyProcessed = await checkIfExists(messageId);
