@@ -1,4 +1,8 @@
 import https from "https";
+import AWS from "aws-sdk";
+
+const dynamo = new AWS.DynamoDB.DocumentClient();
+const TABLE_NAME = process.env.IDEMPOTENCY_TABLE || "FitrobitProcessedMessages";
 
 export const handler = async (event) => {
   console.log("Received SNS event:", JSON.stringify(event, null, 2));
