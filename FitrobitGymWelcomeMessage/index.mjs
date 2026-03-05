@@ -4,6 +4,33 @@ import AWS from "aws-sdk";
 const dynamo = new AWS.DynamoDB.DocumentClient();
 const TABLE_NAME = process.env.IDEMPOTENCY_TABLE || "FitrobitProcessedMessages";
 
+// ✅ Check if message already processed
+async function checkIfExists(messageId) {
+  const result = await dynamo
+    .get({
+      TableName: TABLE_NAME,
+      Key: { messageId },
+    })
+    .promise();
+
+  return !!result.Item;
+}
+
+// ✅ Save processed messageId with TTL (24 hours)
+async function saveMessageId(messageId) {
+  const ttl = Math.floor(Date.now() / 1000) + 60 * 60 * 24; // 24 hours
+
+  await dynamo
+    .put({
+      TableName: TABLE_NAME,
+      Item: {
+        messageId,
+        expiresAt: ttl,
+      },
+    })
+    .promise();
+}
+
 export const handler = async (event) => {
   console.log("Received SNS event:", JSON.stringify(event, null, 2));
 
@@ -14,22 +41,23 @@ export const handler = async (event) => {
     }
 
     const messageId = record.Sns.MessageId;
-    console.log("Processing messageId:", messageId);
 
-    // check DB
-    // const alreadyProcessed = await checkIfExists(messageId);
+    // Check idempotency
+    const alreadyProcessed = await checkIfExists(messageId);
 
-    // if (alreadyProcessed) {
-    //   console.log("Duplicate message detected, skipping...");
-    //   return;
-    // }
+    if (alreadyProcessed) {
+      console.log("Duplicate message detected, skipping...");
+      return {
+        statusCode: 200,
+        body: "Duplicate message skipped",
+      };
+    }
 
-    // Parse the SNS payload
     const payload = JSON.parse(record.Sns.Message);
 
     const postData = JSON.stringify({
       recipient: payload.phoneNumber,
-      sender_id: payload.senderId, // dynamic sender from payload
+      sender_id: payload.senderId,
       type: "plain",
       message: payload.text,
     });
@@ -63,8 +91,8 @@ export const handler = async (event) => {
 
     console.log(`SMS sent to ${payload.phoneNumber}`);
 
-    // save messageId
-    // await saveMessageId(messageId);
+    // Save messageId AFTER successful SMS
+    await saveMessageId(messageId);
 
     return {
       statusCode: 200,
