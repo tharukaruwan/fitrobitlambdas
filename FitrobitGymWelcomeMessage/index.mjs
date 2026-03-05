@@ -1,34 +1,32 @@
 import https from "https";
-import AWS from "aws-sdk";
+import { DynamoDBClient, GetItemCommand, PutItemCommand } from "@aws-sdk/client-dynamodb";
 
-const dynamo = new AWS.DynamoDB.DocumentClient();
+const client = new DynamoDBClient({ region: "ap-southeast-1" });
 const TABLE_NAME = process.env.IDEMPOTENCY_TABLE || "FitrobitProcessedMessages";
 
-// ✅ Check if message already processed
+// Check if message already processed
 async function checkIfExists(messageId) {
-  const result = await dynamo
-    .get({
+  const result = await client.send(
+    new GetItemCommand({
       TableName: TABLE_NAME,
-      Key: { messageId },
+      Key: { messageId: { S: messageId } },
     })
-    .promise();
-
+  );
   return !!result.Item;
 }
 
-// ✅ Save processed messageId with TTL (24 hours)
+// Save processed messageId with TTL (24 hours)
 async function saveMessageId(messageId) {
-  const ttl = Math.floor(Date.now() / 1000) + 60 * 60 * 24; // 24 hours
-
-  await dynamo
-    .put({
+  const ttl = Math.floor(Date.now() / 1000) + 60 * 60 * 24;
+  await client.send(
+    new PutItemCommand({
       TableName: TABLE_NAME,
       Item: {
-        messageId,
-        expiresAt: ttl,
+        messageId: { S: messageId },
+        expiresAt: { N: ttl.toString() },
       },
     })
-    .promise();
+  );
 }
 
 export const handler = async (event) => {
